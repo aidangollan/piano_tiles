@@ -35,7 +35,11 @@ class MenuScreen extends StatelessWidget {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const GameScreen()),
+                  MaterialPageRoute(
+                    builder: (context) => const GameScreen(
+                      levelPath: 'assets/levels/level1.json'
+                    ),
+                  ),
                 );
               },
               child: const Text(

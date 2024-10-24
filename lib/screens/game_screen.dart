@@ -1,86 +1,114 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import '../models/tile.dart';
+import '../models/note.dart';
+import '../models/level.dart';
+import '../services/level_loader.dart';
 import '../widgets/game_board.dart';
 
 class GameScreen extends StatefulWidget {
-  const GameScreen({super.key});
+  final String levelPath;
+  
+  const GameScreen({super.key, required this.levelPath});
 
   @override
   State<GameScreen> createState() => _GameScreenState();
 }
 
 class _GameScreenState extends State<GameScreen> {
-  List<Tile> tiles = [];
+  Level? level;
+  List<Note> activeNotes = [];
   Timer? gameTimer;
   int score = 0;
   bool isGameOver = false;
+  double gameTime = 0;
+  double _lastUpdateTime = 0;
 
   @override
   void initState() {
     super.initState();
-    startGame();
+    _loadLevel();
+  }
+
+  Future<void> _loadLevel() async {
+    try {
+      level = await LevelLoader.loadLevel(widget.levelPath);
+      startGame();
+    } catch (e) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Error'),
+          content: Text('Failed to load level: $e'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   void startGame() {
-    tiles.clear();
+    activeNotes.clear();
     score = 0;
     isGameOver = false;
-    
-    // Create initial tiles
-    addNewTile();
+    gameTime = 0;
+    _lastUpdateTime = 0;
 
     // Start game loop
     gameTimer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
-      if (isGameOver) {
+      if (isGameOver || level == null) {
         timer.cancel();
         return;
       }
 
       setState(() {
-        // Move existing tiles
-        for (var tile in tiles) {
-          tile.move(2.0); // Adjust speed as needed
-          
-          // Check if tile went off screen
-          if (tile.yPosition > MediaQuery.of(context).size.height && !tile.isPressed) {
-            tile.missed = true;
+        double currentTime = gameTime;
+        double deltaTime = currentTime - _lastUpdateTime;
+        _lastUpdateTime = currentTime;
+        gameTime += 0.016; // 16ms in seconds
+
+        // Add new notes based on start time
+        for (var note in level!.notes) {
+          if (note.startTime <= gameTime && 
+              !activeNotes.contains(note) && 
+              !note.isPressed) {
+            activeNotes.add(note);
+          }
+        }
+
+        // Check for missed notes
+        for (var note in activeNotes) {
+          if (gameTime > note.startTime + 1.0 && !note.isPressed) {
+            note.missed = true;
             isGameOver = true;
           }
         }
 
-        // Remove pressed or off-screen tiles
-        tiles.removeWhere((tile) => 
-          tile.isPressed || tile.yPosition > MediaQuery.of(context).size.height);
-
-        // Add new tiles periodically
-        if (tiles.isEmpty || 
-            tiles.last.yPosition > 200) { // Adjust spacing as needed
-          addNewTile();
-        }
+        // Remove completed notes
+        activeNotes.removeWhere((note) => 
+          note.isPressed || (gameTime > note.startTime + note.duration));
       });
     });
   }
 
-  void addNewTile() {
-    final random = DateTime.now().millisecondsSinceEpoch % 4;
-    tiles.add(Tile(lane: random, yPosition: -100));
-  }
-
-  void onTileTap(int lane) {
+  void onNoteTap(String key) {
     if (isGameOver) return;
 
     setState(() {
-      for (var tile in tiles) {
-        if (tile.lane == lane && !tile.isPressed) {
-          if (tile.yPosition > 0 && tile.yPosition < MediaQuery.of(context).size.height - 100) {
-            tile.isPressed = true;
+      for (var note in activeNotes) {
+        if (note.key == key && !note.isPressed) {
+          double notePosition = (gameTime - note.startTime);
+          if (notePosition >= 0 && notePosition <= 1.0) {
+            note.isPressed = true;
             score++;
             return;
           }
         }
       }
-      // Missed tile - game over
+      // Missed note - game over
       isGameOver = true;
     });
   }
@@ -99,31 +127,34 @@ class _GameScreenState extends State<GameScreen> {
         title: Text('Score: $score'),
         backgroundColor: Colors.deepPurple,
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: GameBoard(
-              tiles: tiles,
-              onTileTap: onTileTap,
-              height: MediaQuery.of(context).size.height - 100,
-            ),
-          ),
-          if (isGameOver)
-            Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: Column(
-                children: [
-                  Text('Game Over! Score: $score',
-                      style: const TextStyle(fontSize: 24)),
-                  ElevatedButton(
-                    onPressed: () => setState(() => startGame()),
-                    child: const Text('Play Again'),
+      body: level == null
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                Expanded(
+                  child: GameBoard(
+                    notes: activeNotes,
+                    onNoteTap: onNoteTap,
+                    height: MediaQuery.of(context).size.height - 100,
+                    gameTime: gameTime, // Add this parameter
                   ),
-                ],
-              ),
+                ),
+                if (isGameOver)
+                  Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Column(
+                      children: [
+                        Text('Game Over! Score: $score',
+                            style: const TextStyle(fontSize: 24)),
+                        ElevatedButton(
+                          onPressed: () => setState(() => startGame()),
+                          child: const Text('Play Again'),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
             ),
-        ],
-      ),
     );
   }
 }

@@ -1,0 +1,18 @@
+{
+    "bpm": 120,
+    "backgroundSong": "assets/songs/song1.mp3",
+    "notes": [
+      {
+        "key": "C",
+        "startTime": 1.0,
+        "duration": 0.5,
+        "isLong": false
+      },
+      {
+        "key": "E",
+        "startTime": 1.5,
+        "duration": 0.5,
+        "isLong": false
+      }
+    ]
+  }
